@@ -33,7 +33,7 @@ The training procedure needs [gta5(G)](https://download.visinf.tu-darmstadt.de/d
 │   └── validation
 ```
 
-We also generated some synthetic images with [CycleGAN](https://github.com/junyanz/CycleGAN), we download the `style_ukyoe.pth`, `style_vangogh.pth`, `style_cezanne.pth` pretrained models and transfered GTA5 dataset with these three pretrained models. 
+We also generated some synthetic images with [CycleGAN](https://github.com/junyanz/CycleGAN), we download the `style_ukyoe.pth`, `style_vangogh.pth`, `style_cezanne.pth` pretrained models and transfered GTA5 dataset with these three pretrained models. The generated images are all put in the 'style_xxx' folder directly, which is the same as the `images` folder of GTA5.
 
 ## Train the model
 
@@ -48,4 +48,10 @@ For more details, please refer to `train.py`
 The model can be trained with following command using `eval.py`. 
 ```
 python eval.py --name exp --targets C --test-size 16
+```
+
+## Predict
+
+```
+python predict.py --name exp --targets C --test-size 16
 ```

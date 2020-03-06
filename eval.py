@@ -11,10 +11,10 @@ import argparse
 
 parser = argparse.ArgumentParser(description='TSMLDG test args parser')
 parser.add_argument('--name', default='exp', help='name of the experiment')
-parser.add_argument('--targets', default='C', help='target domain strins : GSMIC')
-parser.add_argument('--test-size', type=int, default=16, help='the batch size of training')
+parser.add_argument('--target', default='C', help='target domain strins : GSMIC, it can be multi targets')
 parser.add_argument('--normal-eval', type=bool, default=True, help='normally eval the network')
 parser.add_argument('--target-eval', type=bool, default=True, help='target-specific eval the network')
+parser.add_argument('--test-size', type=int, default=16, help='the batch size of target specific normalization')
 
 
 def test_one_run(framework, run_name, targets, batches=[16], normal_eval=True, target_specific_eval=True):
@@ -52,9 +52,9 @@ def do_lots_of_exp_tests(names=['exp'], targets=['C'], batch_sizes=[[16]], **kwa
 if __name__ == '__main__':
     args = parser.parse_args()
     names = [args.name]
-    targets = [args.targets]
-    for name in args.targets:
-        assert name in 'GSIMcuv'
+    targets = [args.target]
+    for name in args.target:
+        assert name in 'GSIMCcuv'
     batches = [[args.test_size]]
     do_lots_of_exp_tests(names, targets, batches, normal_eval=args.normal_eval, target_specific_eval=args.target_eval)
 

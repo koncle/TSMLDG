@@ -55,8 +55,7 @@ class MetaFrameWork(object):
 
         target_dataset, folder = get_dataset(target)
         self.target_loader = dataloader(target_dataset(root=ROOT + folder, mode='val'))
-        dataloader = functools.partial(DataLoader, num_workers=workers, pin_memory=True, batch_size=test_size, shuffle=False)
-        self.citys_test_loader = dataloader(CityScapesDataSet(root=ROOT + 'cityscapes', mode='test'))
+        self.target_test_loader = dataloader(target_dataset(root=ROOT + 'cityscapes', mode='test'))
 
         self.opt_old = SGD(self.backbone.parameters(), lr=self.outer_update_lr, momentum=0.9, weight_decay=5e-4)
         self.opt_new = SGD(self.updated_net.parameters(), lr=self.inner_update_lr, momentum=0.9, weight_decay=5e-4)
@@ -259,15 +258,12 @@ class MetaFrameWork(object):
             self.logger.info(loader.dataset.format_class_iou(self.nim.get_class_acc()[0]) + '\n')
         return self.nim.get_acc()[0]
 
-    def predict_citys(self, load_path=None, color=False, dataset=None, train=False):
+    def predict_target(self, load_path=None, color=False, train=False, output_path='predictions'):
         self.load(load_path)
         import skimage.io as skio
-        if dataset is None:
-            dataset = self.citys_test_loader
-        if color:
-            output_path = self.save_path / 'color'
-        else:
-            output_path = self.save_path / 'output'
+        dataset = self.target_test_loader
+
+        output_path = Path(output_path)
         output_path.mkdir(exist_ok=True)
 
         if train:
@@ -363,6 +359,6 @@ if __name__ == '__main__':
 
     os.environ['CUDA_VISIBLE_DEVICES'] = '3,0,1,2'
     framework = MetaFrameWork(name='normal_gta5_aux_cv', train_num=1, source=['G', 'S', 'I', 'M'], target='C')
-    framework.predict_citys('best_city', train=False)
+    framework.predict_target('best_city', train=False)
     framework.do_train()
     framework.val(framework.target_loader)
