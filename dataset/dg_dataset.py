@@ -74,7 +74,7 @@ class DGMetaDataSets(object):
         if aux_root.exists():
             for name in included_styles:
                 folder = aux_root / ('style_' + name)
-                gta5 = GTA5_Multi(root=str(folder), output_path=output_path, force_cache=force_cache,
+                gta5 = GTA5_Multi(root=str(folder), gta5_root=ROOT+'GTA5', output_path=output_path, force_cache=force_cache,
                                       mode=mode, crop_size=crop_size, scale=scale, random_scale=random_scale,
                                       dataset_name='gta5_' + name, random_rotate=random_rotate)
                 self.domains.append(gta5)

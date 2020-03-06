@@ -310,18 +310,19 @@ class GTA5(CityScapesDataSet):
 
 
 class GTA5_Multi(GTA5):
-    def __init__(self, **kwargs):
+    def __init__(self, gta5_root, **kwargs):
         super(GTA5_Multi, self).__init__(**kwargs)
+        self.gta5_root = Path(gta5_root)
 
     def split_data(self, root):
         root = Path(root)
-        img_to_mask = [[str(root)], ['/data/DataSets/GTA5/labels']]
-        x_root = Path('/data/DataSets/GTA5')
-        splitter = MatSplitter(root, x_root / 'split.mat', '', img_to_mask,
+        img_to_mask = [[str(root)], [str(self.gta5_root/'labels')]]
+        splitter = MatSplitter(root, self.gta5_root / 'split.mat', '', img_to_mask,
                                cache_path=self.output_path / 'dataset' / self.name,
                                img_filter='png', force_cache=self.force_cache)
         train, dev, test = splitter.get_train_dev_test_path()
         return train, dev, test
+
 
 # 2592 x 1936
 # 17992, 2000, 5000
