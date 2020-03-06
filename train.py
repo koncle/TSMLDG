@@ -4,7 +4,7 @@ from TSMLDG import MetaFrameWork
 
 parser = argparse.ArgumentParser(description='TSMLDG train args parser')
 parser.add_argument('--name', default='exp', help='name of the experiment')
-parser.add_argument('--source', default='GSIM', help='source domain name list, capital of the first character of dataset')
+parser.add_argument('--source', default='GSIM', help='source domain name list, capital of the first character of dataset "GSIMcuv"(dataset should exists first.)')
 parser.add_argument('--target', default='C', help='target domain name')
 parser.add_argument('--inner-lr', type=float, default=1e-3, help='inner learning rate of meta update')
 parser.add_argument('--outer-lr', type=float, default=5e-3, help='outer learning rate of network update')
@@ -25,4 +25,8 @@ def train(args):
 if __name__ == '__main__':
     args = vars(parser.parse_args())
     print(args)
+    for name in args['source']:
+        assert name in 'GSIMcuv'
+    for name in args['target']:
+        assert name in 'GSIMcuv'
     train(args)

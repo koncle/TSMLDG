@@ -59,36 +59,27 @@ class DGMetaDataSets(object):
         self.domain_split_num = split_num
 
         # Generate domain datasets
+        gta5_styles = {'c': 'cezanne', 'v': 'vangogh', 'u': 'ukiyoe'}
+        included_styles = []
         self.domains = []
         for name in domains:
             dataset, folder = get_dataset(name)
             if dataset is None:
-                continue
+                if name in gta5_styles.keys():
+                    included_styles.append(gta5_styles[name])
             self.domains.append(dataset(root + folder, output_path, force_cache, mode, crop_size=crop_size, scale=scale,
                                         random_scale=random_scale, random_rotate=random_rotate))  # , base_size=1024))
 
-        styles = {'m': 'monet', 'c': 'cezanne', 'v': 'vangogh', 'u': 'ukiyoe'}
-        if 'gta5_aux' in domains:
-            included_styles = list(styles.values())
-        else:
-            find, domain = find_prefix('gta5_aux_', domains)
-            if find:
-                included_styles = [styles[x.lower()] for x in domain[9:]]
-            else:
-                included_styles = []
-            print(included_styles)
-
         aux_root = Path(Aux_ROOT)
         if aux_root.exists():
-            for i, folder in enumerate(Path(aux_root).iterdir()):
-                name = str(folder).split('/')[-1][6:]
-                if name in included_styles:
-                    gta5 = GTA5_Multi(root=str(folder), output_path=output_path, force_cache=force_cache,
+            for name in included_styles:
+                folder = aux_root / ('style_' + name)
+                gta5 = GTA5_Multi(root=str(folder), output_path=output_path, force_cache=force_cache,
                                       mode=mode, crop_size=crop_size, scale=scale, random_scale=random_scale,
                                       dataset_name='gta5_' + name, random_rotate=random_rotate)
-                    self.domains.append(gta5)
+                self.domains.append(gta5)
         else:
-            print(str(aux_root) + ' not exists')
+            print(str(aux_root) + ' not exists, if you want to train with synthetic images, please generate it follow the README')
 
         print('domains {}, split_num {}, rotate {}, processor {}'.format(self.domains, split_num, random_rotate, post_processor))
         # post_processors

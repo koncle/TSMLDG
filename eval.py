@@ -53,6 +53,8 @@ if __name__ == '__main__':
     args = parser.parse_args()
     names = [args.name]
     targets = [args.targets]
+    for name in args.targets:
+        assert name in 'GSIMcuv'
     batches = [[args.test_size]]
     do_lots_of_exp_tests(names, targets, batches, normal_eval=args.normal_eval, target_specific_eval=args.target_eval)
 
