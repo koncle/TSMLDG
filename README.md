@@ -1,7 +1,11 @@
 # TSMLDG
-This is the source code of paper [https://openreview.net/forum?id=wb5nZa1TV](https://openreview.net/forum?id=wb5nZa1-TV).
+This is the source code of paper Generalizable Semantic Segmentation via Model-agnostic Learning and Target-specific Normalization).
 
 ![img](imgs/framework.png)
+
+## Environment
+
+Pytorch 1.2.0,  GPU : 4 * V100, 
 
 ## DataSets
 
