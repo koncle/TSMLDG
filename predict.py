@@ -12,13 +12,13 @@ parser.add_argument('--color', action='store_true', help='output the color map i
 parser.add_argument('--output-path', type=str, default='prediction', help='specify output path')
 
 
-def predict(args):
+def predict():
+    args = parser.parse_args()
+    print(args)
     framework = MetaFrameWork(name=args.name, target=args.target, test_size=args.test_size)
     framework.predict_target(load_path='best_city', color=args.color,
                              train=args.target_eval, output_path=args.output_path)
 
 
 if __name__ == '__main__':
-    args = parser.parse_args()
-    print(args)
-    predict(args)
+    predict()

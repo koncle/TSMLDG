@@ -19,7 +19,7 @@ np.random.seed(seed)
 
 class MetaFrameWork(object):
     def __init__(self, name='normal_all', train_num=1, source='GSIM',
-                 target='C', network=Net, debug=False, resume=False,
+                 target='C', network=Net, debug=False, resume=True, dataset=DGMetaDataSets,
                  inner_lr=1e-3, outer_lr=5e-3, train_size=8, test_size=16, no_source_test=True):
         super(MetaFrameWork, self).__init__()
         self.no_source_test = no_source_test
@@ -48,10 +48,10 @@ class MetaFrameWork(object):
                                        worker_init_fn=lambda _: np.random.seed(
                                            int(torch.initial_seed()) % (2 ** 32 - 1)))
 
-        self.train_loader = dataloader(DGMetaDataSets(mode='train', domains=source, force_cache=True))
+        self.train_loader = dataloader(dataset(mode='train', domains=source, force_cache=True))
 
         dataloader = functools.partial(DataLoader, num_workers=workers, pin_memory=True, batch_size=test_size, shuffle=False)
-        self.source_val_loader = dataloader(DGMetaDataSets(mode='val', domains=source, force_cache=True))
+        self.source_val_loader = dataloader(dataset(mode='val', domains=source, force_cache=True))
 
         target_dataset, folder = get_dataset(target)
         self.target_loader = dataloader(target_dataset(root=ROOT + folder, mode='val'))
@@ -76,8 +76,9 @@ class MetaFrameWork(object):
         self.save_path = Path(self.exp_name)
 
         self.logger = get_logger('train', self.exp_name)
-        self.logger.info('exp_name : {}, train_num = {}, source domains = {}, target_domain = {}, lr : inner = {}, outer = {}\n'.
-                         format(name, self.train_num, source, target, self.inner_update_lr, self.outer_update_lr))
+        self.logger.info('exp_name : {}, train_num = {}, source domains = {}, target_domain = {}, lr : inner = {}, outer = {},'
+                         'dataset : {}, net : {}\n'.
+                         format(name, self.train_num, source, target, self.inner_update_lr, self.outer_update_lr, dataset, net))
         self.logger.info(self.exp_name + '\n')
         self.train_timer, self.test_timer = Timer(), Timer()
 
@@ -118,7 +119,7 @@ class MetaFrameWork(object):
         train_idx = split_idx[:D // 2]
         test_idx = split_idx[D // 2:]
 
-        # print(split_idx, B, D, C, H, W)
+        # print(split_idx, B, D, C, H, W)'
         meta_train_imgs = imgs[:, train_idx].reshape(-1, C, H, W)
         meta_train_targets = targets[:, train_idx].reshape(-1, 1, H, W)
         meta_test_imgs = imgs[:, test_idx].reshape(-1, C, H, W)
@@ -236,7 +237,7 @@ class MetaFrameWork(object):
         self.nim.clear_cache()
         self.nim.set_max_len(len(loader))
         # eval for dropout
-        self.backbone.module.x[-1].eval()
+        self.backbone.module.remove_dropout()
         for idx, (p, img, target) in enumerate(loader):
             if len(img.size()) == 5:
                 B, D, C, H, W = img.size()
@@ -248,25 +249,25 @@ class MetaFrameWork(object):
                 img_d, target_d, = img[:, d], target[:, d]
                 updated_net = self.backbone.train()
                 with torch.no_grad():
-                    # inference
                     new_logits = updated_net(img_d)[0]
                     self.nim(new_logits, target_d)
 
-        self.backbone.module.x[-1].train()
+        self.backbone.module.recover_dropout()
         self.logger.info('\nTarget specific validation : {}\n'.format(self.nim.get_acc()))
         if hasattr(loader.dataset, 'format_class_iou'):
             self.logger.info(loader.dataset.format_class_iou(self.nim.get_class_acc()[0]) + '\n')
         return self.nim.get_acc()[0]
 
-    def predict_target(self, load_path=None, color=False, train=False, output_path='predictions'):
+    def predict_target(self, load_path='best_city', color=False, train=False, output_path='predictions'):
         self.load(load_path)
         import skimage.io as skio
         dataset = self.target_test_loader
 
-        output_path = Path(output_path)
+        output_path = Path(self.save_path / output_path)
         output_path.mkdir(exist_ok=True)
 
         if train:
+            self.backbone.module.remove_dropout()
             self.backbone.train()
         else:
             self.backbone.eval()
@@ -320,7 +321,7 @@ class MetaFrameWork(object):
         print('Saving epoch : {}'.format(self.epoch))
         torch.save(dicts, self.save_path / '{}.pth'.format(name))
 
-    def load(self, path=None, strict=True):
+    def load(self, path=None, strict=False):
         if path is None:
             path = self.save_path / 'ckpt.pth'
         else:
@@ -344,7 +345,8 @@ class MetaFrameWork(object):
             if 'info' in dicts:
                 self.best_source_acc, self.best_source_acc_target, self.best_source_epoch, \
                 self.best_target_acc, self.best_target_acc_source, self.best_target_epoch = dicts['info']
-            self.logger.info('Loaded from {}, next epoch : {}, best_target : {}\n'.format(str(path), self.epoch, self.best_target_acc))
+            self.logger.info('Loaded from {}, next epoch : {}, best_target : {}, best_epoch : {}\n'
+                             .format(str(path), self.epoch, self.best_target_acc, self.best_target_epoch))
             return True
         except Exception as e:
             print(e)
@@ -354,11 +356,8 @@ class MetaFrameWork(object):
 
 
 if __name__ == '__main__':
-    # imgs : batch x domains x C x H x W
-    # targets : batch x domains x 1 x H x W
-
     os.environ['CUDA_VISIBLE_DEVICES'] = '3,0,1,2'
-    framework = MetaFrameWork(name='normal_gta5_aux_cv', train_num=1, source=['G', 'S', 'I', 'M'], target='C')
-    framework.predict_target('best_city', train=False)
+    framework = MetaFrameWork(name='exp', train_num=1, source='GSIM', target='C', debug=False, resume=True)
     framework.do_train()
-    framework.val(framework.target_loader)
+    framework.val(framework.target_test_loader)
+    framework.predict_target()

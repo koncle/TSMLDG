@@ -17,16 +17,19 @@ parser.add_argument('--train-num', type=int, default=1,
 parser.add_argument('--no-source-test', action='store_false', help='whether test the validation performance in source domain when training')
 
 
-def train(args):
-    framework = MetaFrameWork(**args)
-    framework.do_train()
-
-
-if __name__ == '__main__':
+def train():
     args = vars(parser.parse_args())
     print(args)
     for name in args['source']:
         assert name in 'GSIMCcuv'
     assert args['target'][0] in  'GSIMCcuv'
     assert len(args['target'])
-    train(args)
+    framework = MetaFrameWork(**args)
+    framework.do_train()
+
+
+if __name__ == '__main__':
+    from utils.task import FunctionJob
+    job = FunctionJob([train], gpus=[[3, 1, 2, 0]])
+    job.run(minimum_memory=20000)
+    # train()

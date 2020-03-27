@@ -311,8 +311,8 @@ class GTA5(CityScapesDataSet):
 
 class GTA5_Multi(GTA5):
     def __init__(self, gta5_root, **kwargs):
-        super(GTA5_Multi, self).__init__(**kwargs)
         self.gta5_root = Path(gta5_root)
+        super(GTA5_Multi, self).__init__(**kwargs)
 
     def split_data(self, root):
         root = Path(root)

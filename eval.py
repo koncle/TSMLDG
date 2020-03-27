@@ -12,7 +12,7 @@ import argparse
 parser = argparse.ArgumentParser(description='TSMLDG test args parser')
 parser.add_argument('--name', default='exp', help='name of the experiment')
 parser.add_argument('--target', default='C', help='target domain strins : GSMIC, it can be multi targets')
-parser.add_argument('--normal-eval', type=bool, default=True, help='normally eval the network')
+parser.add_argument('--normal-eval', type=bool, default=False, help='normally eval the network')
 parser.add_argument('--target-eval', type=bool, default=True, help='target-specific eval the network')
 parser.add_argument('--test-size', type=int, default=16, help='the batch size of target specific normalization')
 
@@ -49,7 +49,7 @@ def do_lots_of_exp_tests(names=['exp'], targets=['C'], batch_sizes=[[16]], **kwa
         test_one_run(framework, name, target, batches=batch, **kwargs)
 
 
-if __name__ == '__main__':
+def parse():
     args = parser.parse_args()
     names = [args.name]
     targets = [args.target]
@@ -58,4 +58,7 @@ if __name__ == '__main__':
     batches = [[args.test_size]]
     do_lots_of_exp_tests(names, targets, batches, normal_eval=args.normal_eval, target_specific_eval=args.target_eval)
 
+
+if __name__ == '__main__':
+    parse()
 

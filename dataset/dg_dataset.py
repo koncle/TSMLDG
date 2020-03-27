@@ -67,6 +67,7 @@ class DGMetaDataSets(object):
             if dataset is None:
                 if name in gta5_styles.keys():
                     included_styles.append(gta5_styles[name])
+                    continue
             self.domains.append(dataset(root + folder, output_path, force_cache, mode, crop_size=crop_size, scale=scale,
                                         random_scale=random_scale, random_rotate=random_rotate))  # , base_size=1024))
 
@@ -85,34 +86,24 @@ class DGMetaDataSets(object):
         # post_processors
         self.post_processors = Compose([post_processor])
 
-    def get_random_img_from(self, domain, idx, split_idx=None):
+    def get_random_img_from(self, domain, idx):
         while True:
             try:
                 if self.mode == 'train':
-                    if split_idx is None:
-                        img_idx = np.random.randint(len(domain))  # train randomly
-                    else:
-                        segment_length = len(domain) // self.domain_split_num
-                        img_idx = np.random.randint(segment_length * split_idx, segment_length * (split_idx + 1))
+                    img_idx = np.random.randint(len(domain))  # train randomly
                 else:
                     img_idx = idx  # test images in original order
                 p, img, label = domain[img_idx]
                 break
             except Exception as e:
                 traceback.print_exc()
-
         return p, img, label
 
     def __getitem__(self, idx):
         paths, imgs, labels = [], [], []
-        if len(self.domains) == 1:
-            for i in range(self.domain_split_num):
-                p, img, label = self.get_random_img_from(self.domains[0], idx, i)
-                paths.append(p), imgs.append(img), labels.append(label)
-        else:
-            for i, (domain) in enumerate(self.domains):
-                p, img, label = self.get_random_img_from(domain, idx, None)
-                paths.append(p), imgs.append(img), labels.append(label)
+        for i, (domain) in enumerate(self.domains):
+            p, img, label = self.get_random_img_from(domain, idx)
+            paths.append(p), imgs.append(img), labels.append(label)
         paths, imgs, labels = paths, torch.stack(imgs, 0), torch.stack(labels, 0)
         imgs, labels = self.post_processors(imgs, labels, self.mode)
         return paths, imgs, labels
