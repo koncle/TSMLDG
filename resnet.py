@@ -19,6 +19,16 @@ class Net(SegNet):
         seg_logits = self.seg_classifier(feats)
         return seg_logits, c1, c2, c3, c4, feats
 
+    def not_track(self, module=None):
+        if module is None:
+            module = self
+        if len(module._modules) != 0:
+            for (k, v) in module._modules.items():
+                self.not_track(v)
+        else:
+            if isinstance(module, nn.BatchNorm2d):
+                module.track_running_stats = False
+
     def remove_dropout(self):
         self.x[-1].p = 1e-10
 

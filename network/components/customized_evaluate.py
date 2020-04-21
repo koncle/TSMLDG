@@ -3,7 +3,7 @@ import functools
 from torch import nn as nn
 
 from network.components.evaluate_funcs import *
-from utils.nn_utils import make_same_size, get_prediction, to_numpy
+from utils.nn_utils import make_same_size, get_prediction, to_numpy, all_reduce
 
 __all__ = ['LoggedMeasure', 'SegMeasure', 'MultiSegMeasure']
 
@@ -426,6 +426,8 @@ class NaturalImageMeasure(LoggedMeasure):
         else:
             current_matrix = get_confusion_matrix_gpu(prediction, target, self.nclass)
         inter, union, total, freq = self.get_something(current_matrix)
+        if self.dist:
+            all_reduce([inter, union, total, freq])
         inter, union, total, freq = to_numpy([inter, union, total, freq])
         self.inter_meter.update(inter), self.union_meter.update(union)
         self.total_meter.update(total), self.freq_meter.update(freq)

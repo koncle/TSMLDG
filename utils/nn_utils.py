@@ -6,6 +6,7 @@ from scipy.special import softmax
 import numpy as np
 import torch
 import torch.nn.functional as F
+import torch.distributed as dist
 
 
 def get_probability(logits):
@@ -115,7 +116,7 @@ def get_prediction(logits, cpu=False):
 
 
 class Timer(object):
-    def __init__(self, verbose=True):
+    def __init__(self, verbose=False):
         self.start_time = time.time()
         self.verbose = verbose
         self.duration = 0
@@ -200,7 +201,7 @@ def get_updated_network(old, new, lr, load=False):
     param_dicts = dict(old.named_parameters())
 
     for i, (k, v) in enumerate(state_dicts.items()):
-        if k in param_dicts.keys():
+        if k in param_dicts.keys() and param_dicts[k].grad is not None:
             updated_theta[k] = param_dicts[k] - lr * param_dicts[k].grad
         else:
             updated_theta[k] = state_dicts[k]
@@ -242,3 +243,19 @@ def get_img_target(img, target):
         img = img.view(B * D, C, H, W)
         target = target.view(B * D, 1, H, W)
     return img, target
+
+
+def all_reduce(tensor):
+    if isinstance(tensor, (tuple, list)):
+        for t in tensor:
+            all_reduce(t)
+    else:
+        dist.all_reduce(tensor)
+
+
+def all_gather(tensorlist, tensor):
+    if isinstance(tensor, (tuple, list)):
+        for l, t in zip(tensorlist, tensor):
+            all_gather(l, t)
+    else:
+        dist.all_gather(tensorlist, tensor)

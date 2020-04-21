@@ -90,7 +90,7 @@ class DGMetaDataSets(object):
         while True:
             try:
                 if self.mode == 'train':
-                    img_idx = np.random.randint(len(domain))  # train randomly
+                    img_idx = (idx + np.random.randint(len(domain))) % len(domain) # train randomly in gpu
                 else:
                     img_idx = idx  # test images in original order
                 p, img, label = domain[img_idx]

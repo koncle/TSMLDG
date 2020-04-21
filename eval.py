@@ -17,34 +17,36 @@ parser.add_argument('--target-eval', type=bool, default=True, help='target-speci
 parser.add_argument('--test-size', type=int, default=16, help='the batch size of target specific normalization')
 
 
-def test_one_run(framework, run_name, targets, batches=[16], normal_eval=True, target_specific_eval=True):
+def test_one_run(framework, run_name, targets, batches=[16], normal_eval=True, target_specific_eval=True, **kwargs):
     # for one experiment, test multi targets in multi batch_sizes
-    print('=' * 20 + ' {} '.format(run_name) + '=' * 20)
+    framework.print('=' * 20 + ' {} '.format(run_name) + '=' * 20)
     framework.save_path = Path(run_name)
     framework.load('best_city', strict=False)
 
     seeds = [12, 123, 1234, 12345, 123456]
     for target in targets:
-        print('-' * 20 + ' {} '.format(target) + '-' * 20)
+        framework.log('-' * 20 + ' {} '.format(target) + '-' * 20 + str(kwargs) + '\n\n')
         iou = AverageMeter()
 
         if normal_eval:
-            framework.val(get_target_loader(target, 8, shuffle=False))
+            framework.val(get_target_loader(target, 8, shuffle=False), **kwargs)
 
         if target_specific_eval:
             for batch in batches:
-                print('------ {} in 5 runs ------'.format(batch))
-                for seed in seeds:
+                framework.log('------ {} in 5 runs ------'.format(batch) + '\n\n')
+                for i, seed in enumerate(seeds):
+                    if batch == 1 and i == 1:
+                        break
                     torch.manual_seed(seed)
                     np.random.seed(seed)
-                    res = framework.target_specific_val(get_target_loader(target, batch, shuffle=True))
+                    res = framework.target_specific_val(get_target_loader(target, batch, shuffle=True), **kwargs)
                     iou.update(res)
-                print('mean, batch : {},  mIoU : {},'.format(batch, iou.avg))
+                framework.log('mean, batch : {},  mIoU : {},'.format(batch, iou.avg) + '\n\n')
                 iou.reset()
 
 
-def do_lots_of_exp_tests(names=['exp'], targets=['C'], batch_sizes=[[16]], **kwargs):
-    framework = MetaFrameWork(name='tmp')
+def do_lots_of_exp_tests(names=['exp'], targets=['C'], batch_sizes=[[16]], bn='enc', **kwargs):
+    framework = MetaFrameWork(name='tmp', bn=bn)
     for name, target, batch in zip(names, targets, batch_sizes):
         test_one_run(framework, name, target, batches=batch, **kwargs)
 
@@ -60,5 +62,5 @@ def parse():
 
 
 if __name__ == '__main__':
-    parse()
-
+    # parse()
+    do_lots_of_exp_tests(names=['/data/zj/PycharmProjects/TSMLDG/exp/enc_dg_all'], batch_sizes=[[16, 8, 1]], normal_eval=False)

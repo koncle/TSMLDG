@@ -19,8 +19,8 @@ np.random.seed(seed)
 
 class MetaFrameWork(object):
     def __init__(self, name='normal_all', train_num=1, source='GSIM',
-                 target='C', network=Net, debug=False, resume=True, dataset=DGMetaDataSets,
-                 inner_lr=1e-3, outer_lr=5e-3, train_size=8, test_size=16, no_source_test=True):
+                 target='C', network=Net, resume=True, dataset=DGMetaDataSets,
+                 inner_lr=1e-3, outer_lr=5e-3, train_size=8, test_size=16, no_source_test=True, bn='torch'):
         super(MetaFrameWork, self).__init__()
         self.no_source_test = no_source_test
         self.train_num = train_num
@@ -29,39 +29,13 @@ class MetaFrameWork(object):
 
         self.inner_update_lr = inner_lr
         self.outer_update_lr = outer_lr
-
-        self.kwargs = {'bn': 'torch', 'output_stride': 8}
-        self.backbone = nn.DataParallel(network(**self.kwargs)).cuda()
-        self.kwargs.update({'pretrained': False})
-        self.updated_net = nn.DataParallel(network(**self.kwargs)).cuda()
-        self.ce = nn.CrossEntropyLoss(ignore_index=-1)
-        self.nim = NaturalImageMeasure(nclass=19)
-
-        if debug:
-            batch_size = 2
-            workers = 0
-        else:
-            batch_size = train_size
-            workers = len(source) * 8
-
-        dataloader = functools.partial(DataLoader, num_workers=workers, pin_memory=True, batch_size=batch_size, shuffle=True,
-                                       worker_init_fn=lambda _: np.random.seed(
-                                           int(torch.initial_seed()) % (2 ** 32 - 1)))
-
-        self.train_loader = dataloader(dataset(mode='train', domains=source, force_cache=True))
-
-        dataloader = functools.partial(DataLoader, num_workers=workers, pin_memory=True, batch_size=test_size, shuffle=False)
-        self.source_val_loader = dataloader(dataset(mode='val', domains=source, force_cache=True))
-
-        target_dataset, folder = get_dataset(target)
-        self.target_loader = dataloader(target_dataset(root=ROOT + folder, mode='val'))
-        self.target_test_loader = dataloader(target_dataset(root=ROOT + 'cityscapes', mode='test'))
-
-        self.opt_old = SGD(self.backbone.parameters(), lr=self.outer_update_lr, momentum=0.9, weight_decay=5e-4)
-        self.opt_new = SGD(self.updated_net.parameters(), lr=self.inner_update_lr, momentum=0.9, weight_decay=5e-4)
-        self.total_epoch = 120
-
-        self.scheduler_old = PolyLR(self.opt_old, self.total_epoch, len(self.train_loader), 0, True, power=0.9)
+        self.network = network
+        self.dataset = dataset
+        self.train_size = train_size
+        self.test_size = test_size
+        self.source = source
+        self.target = target
+        self.bn = bn
 
         self.epoch = 1
         self.best_target_acc = 0
@@ -72,14 +46,41 @@ class MetaFrameWork(object):
         self.best_source_acc_target = 0
         self.best_source_epoch = 0
 
+        self.total_epoch = 120
         self.save_interval = 1
         self.save_path = Path(self.exp_name)
+        self.init()
+
+    def init(self):
+        kwargs = {'bn': self.bn, 'output_stride': 8}
+        self.backbone = nn.DataParallel(self.network(**kwargs)).cuda()
+        kwargs.update({'pretrained': False})
+        self.updated_net = nn.DataParallel(self.network(**kwargs)).cuda()
+        self.ce = nn.CrossEntropyLoss(ignore_index=-1)
+        self.nim = NaturalImageMeasure(nclass=19)
+
+        batch_size = self.train_size
+        workers = len(self.source) * 4
+
+        dataloader = functools.partial(DataLoader, num_workers=workers, pin_memory=True, batch_size=batch_size, shuffle=True)
+        self.train_loader = dataloader(self.dataset(mode='train', domains=self.source, force_cache=True))
+
+        dataloader = functools.partial(DataLoader, num_workers=workers, pin_memory=True, batch_size=self.test_size, shuffle=False)
+        self.source_val_loader = dataloader(self.dataset(mode='val', domains=self.source, force_cache=True))
+
+        target_dataset, folder = get_dataset(self.target)
+        self.target_loader = dataloader(target_dataset(root=ROOT + folder, mode='val'))
+        self.target_test_loader = dataloader(target_dataset(root=ROOT + 'cityscapes', mode='test'))
+
+        self.opt_old = SGD(self.backbone.parameters(), lr=self.outer_update_lr, momentum=0.9, weight_decay=5e-4)
+        self.scheduler_old = PolyLR(self.opt_old, self.total_epoch, len(self.train_loader), 0, True, power=0.9)
 
         self.logger = get_logger('train', self.exp_name)
-        self.logger.info('exp_name : {}, train_num = {}, source domains = {}, target_domain = {}, lr : inner = {}, outer = {},'
-                         'dataset : {}, net : {}\n'.
-                         format(name, self.train_num, source, target, self.inner_update_lr, self.outer_update_lr, dataset, net))
-        self.logger.info(self.exp_name + '\n')
+        self.log('exp_name : {}, train_num = {}, source domains = {}, target_domain = {}, lr : inner = {}, outer = {},'
+                 'dataset : {}, net : {}, bn : {}\n'.
+                 format(self.exp_name, self.train_num, self.source, self.target, self.inner_update_lr, self.outer_update_lr, self.dataset,
+                        self.network, self.bn))
+        self.log(self.exp_name + '\n')
         self.train_timer, self.test_timer = Timer(), Timer()
 
     def train(self, epoch, it, inputs):
@@ -116,10 +117,13 @@ class MetaFrameWork(object):
         imgs, targets = inputs
         B, D, C, H, W = imgs.size()
         split_idx = np.random.permutation(D)
-        train_idx = split_idx[:D // 2]
-        test_idx = split_idx[D // 2:]
+        i = np.random.randint(1, D)
+        train_idx = split_idx[:i]
+        test_idx = split_idx[i:]
+        # train_idx = split_idx[:D // 2]
+        # test_idx = split_idx[D // 2:]
 
-        # print(split_idx, B, D, C, H, W)'
+        # self.print(split_idx, B, D, C, H, W)'
         meta_train_imgs = imgs[:, train_idx].reshape(-1, C, H, W)
         meta_train_targets = targets[:, train_idx].reshape(-1, 1, H, W)
         meta_test_imgs = imgs[:, test_idx].reshape(-1, C, H, W)
@@ -127,7 +131,6 @@ class MetaFrameWork(object):
 
         # Meta-Train
         tr_logits = self.backbone(meta_train_imgs)[0]
-        # tr_logits = train_res[0]
         tr_logits = make_same_size(tr_logits, meta_train_targets)
         ds_loss = self.ce(tr_logits, meta_train_targets[:, 0])
 
@@ -162,7 +165,7 @@ class MetaFrameWork(object):
             self.load()
 
         self.writer = SummaryWriter(str(self.save_path / 'tensorboard'), filename_suffix=time.strftime('_%Y-%m-%d_%H-%M-%S'))
-        self.logger.info('Start epoch : {}\n'.format(self.epoch))
+        self.log('Start epoch : {}\n'.format(self.epoch))
 
         for epoch in range(self.epoch, self.total_epoch + 1):
             loss_meters, acc_meters = MeterDicts(), MeterDicts(averaged=['iou'])
@@ -180,25 +183,26 @@ class MetaFrameWork(object):
                     loss_meters.update_meters(losses, skips=['dg'] if not meta else [])
                     acc_meters.update_meters(acc)
 
-                    print(self.get_string(epoch, it, loss_meters, acc_meters, lr, meta), end='')
+                    self.print(self.get_string(epoch, it, loss_meters, acc_meters, lr, meta), end='')
                     self.tfb_log(epoch, it, loss_meters, acc_meters)
-                self.logger.info(self.get_string(epoch, it, loss_meters, acc_meters, lr, meta) + '\n')
+            self.print(self.train_timer.get_formatted_duration())
+            self.log(self.get_string(epoch, it, loss_meters, acc_meters, lr, meta) + '\n')
 
             self.save('ckpt')
             if epoch % self.save_interval == 0:
                 with self.test_timer:
-                    self.save_best(epoch)
+                    city_acc = self.val(self.target_loader)
+                    self.save_best(city_acc, epoch)
 
             total_duration = self.train_timer.duration + self.test_timer.duration
-            print('Time Left : ' + self.train_timer.get_formatted_duration(total_duration * (self.total_epoch - epoch)) + '\n')
+            self.print('Time Left : ' + self.train_timer.get_formatted_duration(total_duration * (self.total_epoch - epoch)) + '\n')
 
-        self.logger.info('Best city acc : \n  city : {}, origin : {}, epoch : {}\n'.format(
+        self.log('Best city acc : \n  city : {}, origin : {}, epoch : {}\n'.format(
             self.best_target_acc, self.best_target_acc_source, self.best_target_epoch))
-        self.logger.info('Best origin acc : \n  city : {}, origin : {}, epoch : {}\n'.format(
+        self.log('Best origin acc : \n  city : {}, origin : {}, epoch : {}\n'.format(
             self.best_source_acc_target, self.best_source_acc, self.best_source_epoch))
 
-    def save_best(self, epoch):
-        city_acc = self.val(self.target_loader)
+    def save_best(self, city_acc, epoch):
         self.writer.add_scalar('acc/citys', city_acc, epoch)
         if not self.no_source_test:
             origin_acc = self.val(self.source_val_loader)
@@ -228,9 +232,9 @@ class MetaFrameWork(object):
                 img, target = to_cuda(get_img_target(img, target))
                 logits = self.backbone(img)[0]
                 self.nim(logits, target)
-        self.logger.info('\nNormal validation : {}\n'.format(self.nim.get_acc()))
+        self.log('\nNormal validation : {}\n'.format(self.nim.get_acc()))
         if hasattr(dataset.dataset, 'format_class_iou'):
-            self.logger.info(dataset.dataset.format_class_iou(self.nim.get_class_acc()[0]) + '\n')
+            self.log(dataset.dataset.format_class_iou(self.nim.get_class_acc()[0]) + '\n')
         return self.nim.get_acc()[0]
 
     def target_specific_val(self, loader):
@@ -238,6 +242,7 @@ class MetaFrameWork(object):
         self.nim.set_max_len(len(loader))
         # eval for dropout
         self.backbone.module.remove_dropout()
+        self.backbone.module.not_track()
         for idx, (p, img, target) in enumerate(loader):
             if len(img.size()) == 5:
                 B, D, C, H, W = img.size()
@@ -247,15 +252,15 @@ class MetaFrameWork(object):
             img, target = to_cuda([img.reshape(B, D, C, H, W), target.reshape(B, D, 1, H, W)])
             for d in range(img.size(1)):
                 img_d, target_d, = img[:, d], target[:, d]
-                updated_net = self.backbone.train()
+                self.backbone.train()
                 with torch.no_grad():
-                    new_logits = updated_net(img_d)[0]
+                    new_logits = self.backbone(img_d)[0]
                     self.nim(new_logits, target_d)
 
         self.backbone.module.recover_dropout()
-        self.logger.info('\nTarget specific validation : {}\n'.format(self.nim.get_acc()))
+        self.log('\nTarget specific validation : {}\n'.format(self.nim.get_acc()))
         if hasattr(loader.dataset, 'format_class_iou'):
-            self.logger.info(loader.dataset.format_class_iou(self.nim.get_class_acc()[0]) + '\n')
+            self.log(loader.dataset.format_class_iou(self.nim.get_class_acc()[0]) + '\n')
         return self.nim.get_acc()[0]
 
     def predict_target(self, load_path='best_city', color=False, train=False, output_path='predictions'):
@@ -301,6 +306,12 @@ class MetaFrameWork(object):
         string += 'lr : {:.6f}, meta : {}'.format(lr, meta)
         return string
 
+    def log(self, strs):
+        self.logger.info(strs)
+
+    def print(self, strs, **kwargs):
+        print(strs, **kwargs)
+
     def tfb_log(self, epoch, it, losses, acc):
         iteration = epoch * len(self.train_loader) + it
         for k, v in losses.items():
@@ -318,7 +329,7 @@ class MetaFrameWork(object):
             'best': self.best_target_acc,
             'info': info
         }
-        print('Saving epoch : {}'.format(self.epoch))
+        self.print('Saving epoch : {}'.format(self.epoch))
         torch.save(dicts, self.save_path / '{}.pth'.format(name))
 
     def load(self, path=None, strict=False):
@@ -331,9 +342,9 @@ class MetaFrameWork(object):
                 path = self.save_path / '{}.pth'.format(path)
 
         try:
-            dicts = torch.load(path)
+            dicts = torch.load(path, map_location='cpu')
             msg = self.backbone.load_state_dict(dicts['backbone'], strict=strict)
-            print(msg)
+            self.print(msg)
             if 'opt' in dicts:
                 self.opt_old.load_state_dict(dicts['opt'])
             if 'epoch' in dicts:
@@ -345,12 +356,12 @@ class MetaFrameWork(object):
             if 'info' in dicts:
                 self.best_source_acc, self.best_source_acc_target, self.best_source_epoch, \
                 self.best_target_acc, self.best_target_acc_source, self.best_target_epoch = dicts['info']
-            self.logger.info('Loaded from {}, next epoch : {}, best_target : {}, best_epoch : {}\n'
-                             .format(str(path), self.epoch, self.best_target_acc, self.best_target_epoch))
+            self.log('Loaded from {}, next epoch : {}, best_target : {}, best_epoch : {}\n'
+                     .format(str(path), self.epoch, self.best_target_acc, self.best_target_epoch))
             return True
         except Exception as e:
-            print(e)
-            self.logger.info('No ckpt found in {}\n'.format(str(path)))
+            self.print(e)
+            self.log('No ckpt found in {}\n'.format(str(path)))
             self.epoch = 1
             return False
 
@@ -360,4 +371,6 @@ if __name__ == '__main__':
     framework = MetaFrameWork(name='exp', train_num=1, source='GSIM', target='C', debug=False, resume=True)
     framework.do_train()
     framework.val(framework.target_test_loader)
+    from eval import test_one_run
+    test_one_run(framework, 'previous_exps/dg_all', targets='C', batches=[16, 8, 1], normal_eval=False)
     framework.predict_target()
